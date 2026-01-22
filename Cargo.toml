@@ -1,0 +1,14 @@
+[package]
+name = "recfstab"
+version = "0.1.0"
+edition = "2021"
+description = "Generate fstab from mounted filesystems (like genfstab)"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+
+[profile.release]
+strip = true
+lto = true
