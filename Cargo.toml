@@ -2,7 +2,7 @@
 name = "recfstab"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.74"
 description = "Generate fstab from mounted filesystems (like genfstab)"
 license = "MIT"
 repository = "https://github.com/LevitateOS/recfstab"
