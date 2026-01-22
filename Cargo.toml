@@ -2,8 +2,20 @@
 name = "recfstab"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.70"
 description = "Generate fstab from mounted filesystems (like genfstab)"
 license = "MIT"
+repository = "https://github.com/LevitateOS/recfstab"
+homepage = "https://github.com/LevitateOS/recfstab"
+documentation = "https://github.com/LevitateOS/recfstab#readme"
+readme = "README.md"
+keywords = ["fstab", "linux", "mount", "genfstab", "system"]
+categories = ["command-line-utilities", "filesystem"]
+authors = ["LevitateOS Contributors"]
+exclude = [
+    ".github/*",
+    "CLAUDE.md",
+]
 
 [dependencies]
 anyhow = "1.0"

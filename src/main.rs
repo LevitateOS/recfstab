@@ -1,12 +1,32 @@
-//! recfstab - Generate fstab from mounted filesystems
+//! # recfstab
 //!
-//! Like genfstab for Arch Linux - reads mounts and outputs fstab entries.
-//! Does ONE thing: generate fstab. User redirects output to file.
+//! Generate fstab entries from mounted filesystems.
 //!
-//! Usage:
-//!   recfstab /mnt >> /mnt/etc/fstab
+//! `recfstab` is a simple, focused tool that reads the currently mounted filesystems
+//! under a specified root directory and outputs properly formatted fstab entries.
+//! It's designed to work like Arch Linux's `genfstab` utility.
 //!
-//! This is NOT an installer. This generates fstab. That's it.
+//! ## Features
+//!
+//! - Generates fstab entries with UUID identifiers (default) or LABELs
+//! - Automatically filters out pseudo-filesystems (proc, sysfs, tmpfs, etc.)
+//! - Handles btrfs subvolumes correctly
+//! - Outputs standard fstab format compatible with all Linux distributions
+//!
+//! ## Usage
+//!
+//! ```bash
+//! # Generate fstab for filesystems mounted under /mnt
+//! recfstab /mnt >> /mnt/etc/fstab
+//!
+//! # Use LABELs instead of UUIDs
+//! recfstab -L /mnt >> /mnt/etc/fstab
+//! ```
+//!
+//! ## Requirements
+//!
+//! - Linux system with `findmnt` and `blkid` utilities
+//! - Root privileges (for blkid to read device UUIDs)
 
 use anyhow::{bail, Result};
 use clap::Parser;
@@ -14,30 +34,68 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::process::Command;
 
+/// Command-line arguments for recfstab.
 #[derive(Parser)]
 #[command(name = "recfstab")]
+#[command(version)]
 #[command(about = "Generate fstab from mounted filesystems (like genfstab)")]
+#[command(
+    long_about = "Reads mounted filesystems under a root directory and outputs \
+    fstab entries with UUIDs (or LABELs). Designed for system installation workflows \
+    where you need to generate /etc/fstab for a newly installed system."
+)]
 struct Args {
-    /// Root directory to scan (e.g., /mnt)
+    /// Root directory to scan for mounted filesystems (e.g., /mnt)
     root: String,
 
-    /// Use LABEL instead of UUID
+    /// Use filesystem LABEL instead of UUID for device identification
     #[arg(short = 'L', long)]
     label: bool,
 }
+
+/// Pseudo-filesystems and special mounts that should be excluded from fstab.
+const PSEUDO_FILESYSTEMS: &[&str] = &[
+    "proc",
+    "sysfs",
+    "devtmpfs",
+    "tmpfs",
+    "devpts",
+    "cgroup",
+    "cgroup2",
+    "efivarfs",
+    "securityfs",
+    "debugfs",
+    "tracefs",
+    "fusectl",
+    "configfs",
+    "binfmt_misc",
+    "autofs",
+    "mqueue",
+    "hugetlbfs",
+    "pstore",
+    "bpf",
+    "selinuxfs",
+    "binder",
+    "rpc_pipefs",
+    "fuse.portal",
+    "fuse.gvfsd-fuse",
+    "overlay",
+    "ramfs",
+    "nsfs",
+];
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
     let root = Path::new(&args.root);
     if !root.exists() {
-        bail!("Root directory {} does not exist", args.root);
+        bail!("Root directory '{}' does not exist", args.root);
     }
     if !root.is_dir() {
-        bail!("{} is not a directory", args.root);
+        bail!("'{}' is not a directory", args.root);
     }
 
-    // Canonicalize the root path for matching
+    // Canonicalize the root path for accurate matching
     let root_canonical = root.canonicalize()?;
     let root_str = root_canonical.to_string_lossy();
 
@@ -47,13 +105,15 @@ fn main() -> Result<()> {
         .output()?;
 
     if !output.status.success() {
-        bail!("findmnt failed");
+        bail!(
+            "findmnt command failed. Ensure util-linux is installed and you have \
+             appropriate permissions."
+        );
     }
 
     let mounts_str = String::from_utf8_lossy(&output.stdout);
     let mut seen_targets: HashSet<String> = HashSet::new();
 
-    // Process each mount
     for line in mounts_str.lines() {
         let parts: Vec<&str> = line.splitn(4, ' ').collect();
         if parts.len() < 4 {
@@ -65,56 +125,36 @@ fn main() -> Result<()> {
         let fstype = parts[2];
         let options = parts[3];
 
-        // Skip if not under our root
+        // Skip mounts not under our root
         if !target.starts_with(root_str.as_ref()) && target != root_str.as_ref() {
             continue;
         }
 
-        // Skip pseudo-filesystems and special mounts
-        if matches!(fstype, "proc" | "sysfs" | "devtmpfs" | "tmpfs" | "devpts" |
-            "cgroup" | "cgroup2" | "efivarfs" | "securityfs" | "debugfs" | "tracefs" |
-            "fusectl" | "configfs" | "binfmt_misc" | "autofs" | "mqueue" | "hugetlbfs" |
-            "pstore" | "bpf" | "selinuxfs" | "binder" | "rpc_pipefs" | "fuse.portal" |
-            "fuse.gvfsd-fuse" | "overlay") {
+        // Skip pseudo-filesystems
+        if is_pseudo_filesystem(fstype) {
             continue;
         }
 
-        // Skip if we've already seen this target (avoid duplicates)
+        // Skip duplicates
         if seen_targets.contains(target) {
             continue;
         }
         seen_targets.insert(target.to_string());
 
-        // Determine the fstab target path (relative to root)
-        let fstab_target = if target == root_str.as_ref() {
-            "/".to_string()
-        } else {
-            let stripped = target.strip_prefix(root_str.as_ref()).unwrap_or(target);
-            if stripped.starts_with('/') {
-                stripped.to_string()
-            } else {
-                format!("/{}", stripped)
-            }
-        };
+        // Convert absolute target path to path relative to root
+        let fstab_target = make_fstab_target(target, &root_str);
 
         // Get UUID or LABEL for the device
         let identifier = get_device_identifier(source, args.label)?;
 
-        // Determine pass number (1 for root, 2 for others, 0 for special fs)
-        let pass = if fstab_target == "/" {
-            1
-        } else if needs_fsck(fstype) {
-            2
-        } else {
-            0
-        };
+        // Determine fsck pass number
+        let pass = determine_pass_number(&fstab_target, fstype);
 
-        // Filter options - remove some runtime-only options
+        // Filter runtime-only mount options
         let filtered_options = filter_options(options);
 
-        // Output fstab line
-        println!(
-            "# {source}");
+        // Output fstab entry
+        println!("# {}", source);
         println!(
             "{}\t{}\t{}\t{}\t0\t{}",
             identifier, fstab_target, fstype, filtered_options, pass
@@ -125,8 +165,28 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Check if a filesystem type is a pseudo-filesystem that should be excluded.
+fn is_pseudo_filesystem(fstype: &str) -> bool {
+    PSEUDO_FILESYSTEMS.contains(&fstype)
+}
+
+/// Convert an absolute mount target to a path relative to the root.
+fn make_fstab_target(target: &str, root_str: &str) -> String {
+    if target == root_str {
+        "/".to_string()
+    } else {
+        let stripped = target.strip_prefix(root_str).unwrap_or(target);
+        if stripped.starts_with('/') {
+            stripped.to_string()
+        } else {
+            format!("/{}", stripped)
+        }
+    }
+}
+
+/// Get the device identifier (UUID or LABEL) for a source device.
 fn get_device_identifier(source: &str, use_label: bool) -> Result<String> {
-    // If it's already a UUID= or LABEL= reference, use it
+    // Already has an identifier
     if source.starts_with("UUID=") || source.starts_with("LABEL=") {
         return Ok(source.to_string());
     }
@@ -138,7 +198,7 @@ fn get_device_identifier(source: &str, use_label: bool) -> Result<String> {
         source
     };
 
-    // For device paths, look up UUID or LABEL
+    // Look up UUID or LABEL for block devices
     if device.starts_with("/dev/") {
         let tag = if use_label { "LABEL" } else { "UUID" };
         let output = Command::new("blkid")
@@ -156,22 +216,48 @@ fn get_device_identifier(source: &str, use_label: bool) -> Result<String> {
         return Ok(device.to_string());
     }
 
-    // For other sources (like bind mounts), use as-is
+    // For other sources (bind mounts, network mounts), use as-is
     Ok(source.to_string())
 }
 
-fn needs_fsck(fstype: &str) -> bool {
-    matches!(fstype, "ext2" | "ext3" | "ext4" | "xfs" | "btrfs" | "vfat" | "f2fs")
+/// Determine the fsck pass number for a filesystem.
+///
+/// - Pass 1: Root filesystem (checked first)
+/// - Pass 2: Other filesystems that support fsck
+/// - Pass 0: Filesystems that don't need/support fsck
+fn determine_pass_number(fstab_target: &str, fstype: &str) -> u8 {
+    if fstab_target == "/" {
+        1
+    } else if needs_fsck(fstype) {
+        2
+    } else {
+        0
+    }
 }
 
+/// Check if a filesystem type supports/needs fsck.
+fn needs_fsck(fstype: &str) -> bool {
+    matches!(
+        fstype,
+        "ext2" | "ext3" | "ext4" | "xfs" | "btrfs" | "vfat" | "f2fs"
+    )
+}
+
+/// Filter out runtime-only mount options that shouldn't be in fstab.
 fn filter_options(options: &str) -> String {
-    options
+    let filtered: Vec<&str> = options
         .split(',')
         .filter(|opt| {
-            // Remove runtime-only options
-            !matches!(*opt, "seclabel" | "relatime" | "noatime" | "lazytime")
-                && !opt.starts_with("subvolid=")
+            !matches!(
+                *opt,
+                "seclabel" | "relatime" | "noatime" | "lazytime" | "rw" | "ro"
+            ) && !opt.starts_with("subvolid=")
         })
-        .collect::<Vec<_>>()
-        .join(",")
+        .collect();
+
+    if filtered.is_empty() {
+        "defaults".to_string()
+    } else {
+        filtered.join(",")
+    }
 }
