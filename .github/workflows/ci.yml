@@ -97,6 +97,9 @@ jobs:
       - name: Install Rust 1.74
         uses: dtolnay/rust-toolchain@1.74
 
+      - name: Remove Cargo.lock (regenerate with compatible format)
+        run: rm -f Cargo.lock
+
       - name: Check MSRV
         run: cargo check --verbose
 
