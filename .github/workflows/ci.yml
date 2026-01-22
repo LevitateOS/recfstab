@@ -106,7 +106,11 @@ jobs:
   release:
     name: Release
     needs: [test, clippy, fmt, msrv]
-    if: github.event_name == 'workflow_dispatch'
+    # Run on push to master (auto patch bump) or workflow_dispatch (manual bump type)
+    # Skip if commit is a version bump (prevent infinite loop)
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore: Bump version')) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -134,7 +138,8 @@ jobs:
         id: bump
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
-          BUMP_TYPE="${{ github.event.inputs.version_bump }}"
+          # Use input for workflow_dispatch, default to patch for push
+          BUMP_TYPE="${{ github.event.inputs.version_bump || 'patch' }}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
           case "$BUMP_TYPE" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
