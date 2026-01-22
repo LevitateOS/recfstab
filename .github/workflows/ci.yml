@@ -62,24 +62,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-action@stable
-
-      - name: Build release
-        run: cargo build --release --verbose
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: recfstab-linux-x86_64
-          path: target/release/recfstab
-
   msrv:
     name: MSRV (1.70)
     runs-on: ubuntu-latest
@@ -91,3 +73,77 @@ jobs:
 
       - name: Check MSRV
         run: cargo check --verbose
+
+  # Auto-release job - only runs on master after all checks pass
+  release:
+    name: Auto Release
+    needs: [test, clippy, fmt, msrv]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          # Split version into parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          # Increment patch
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          # Update Cargo.toml
+          sed -i "s/^version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" Cargo.toml
+          echo "Bumped version: $CURRENT -> $NEW_VERSION"
+
+      - name: Update Cargo.lock
+        run: cargo check
+
+      - name: Commit version bump
+        run: |
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: Bump version to ${{ steps.bump.outputs.version }}"
+          git push
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+      - name: Build release binaries
+        run: |
+          cargo build --release
+          cd target/release
+          tar czvf ../../recfstab-x86_64-unknown-linux-gnu.tar.gz recfstab
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: v${{ steps.bump.outputs.version }}
+          files: recfstab-x86_64-unknown-linux-gnu.tar.gz
+          generate_release_notes: true
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true  # Don't fail if crates.io token not set
