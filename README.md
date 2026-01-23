@@ -2,6 +2,36 @@
 
 LevitateOS fstab generator. Like `genfstab` for Arch Linux - reads mounted filesystems and outputs fstab entries with UUIDs.
 
+## Status
+
+| Metric | Value |
+|--------|-------|
+| Stage | Beta |
+| Target | x86_64 Linux |
+| Last verified | 2026-01-23 |
+
+### Works
+
+- UUID, LABEL, PARTUUID, PARTLABEL identification modes
+- Swap partition detection (skips zram)
+- Pseudo-filesystem filtering
+
+### Known Issues
+
+- See parent repo issues
+
+---
+
+## Author
+
+<!-- HUMAN WRITTEN - DO NOT MODIFY -->
+
+[Waiting for human input]
+
+<!-- END HUMAN WRITTEN -->
+
+---
+
 **You redirect the output yourself.** This tool generates fstab, nothing more.
 
 ## Usage
