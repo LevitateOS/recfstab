@@ -1,128 +1,78 @@
 # recfstab
 
-LevitateOS fstab generator. Like `genfstab` for Arch Linux - reads mounted filesystems and outputs fstab entries with UUIDs.
+Generates fstab entries from mounted filesystems. Like `genfstab` for Arch.
+
+Outputs to stdout. You redirect it yourself.
 
 ## Status
 
-| Metric | Value |
-|--------|-------|
-| Stage | Beta |
-| Target | x86_64 Linux |
-| Last verified | 2026-01-23 |
-
-### Works
-
-- UUID, LABEL, PARTUUID, PARTLABEL identification modes
-- Swap partition detection (skips zram)
-- Pseudo-filesystem filtering
-
-### Known Issues
-
-- See parent repo issues
-
----
-
-## Author
-
-<!-- HUMAN WRITTEN - DO NOT MODIFY -->
-
-[Waiting for human input]
-
-<!-- END HUMAN WRITTEN -->
-
----
-
-**You redirect the output yourself.** This tool generates fstab, nothing more.
+**Beta.** Works for standard EFI + ext4 setups.
 
 ## Usage
 
 ```bash
-# After mounting your partitions
+# Mount partitions first
 mount /dev/vda2 /mnt
-mkdir -p /mnt/boot
 mount /dev/vda1 /mnt/boot
 
-# Generate fstab
+# Generate fstab (append to file)
 recfstab /mnt >> /mnt/etc/fstab
+
+# Preview without writing
+recfstab /mnt
 ```
 
 ## Options
 
 ```
-USAGE:
-    recfstab [OPTIONS] <ROOT>
+recfstab [OPTIONS] <ROOT>
 
-ARGS:
-    <ROOT>    Root directory to scan (e.g., /mnt)
-
-OPTIONS:
-    -L, --label       Use filesystem LABEL instead of UUID
-    -p, --partuuid    Use partition UUID (PARTUUID)
-    -t, --partlabel   Use partition LABEL (PARTLABEL)
-    -h, --help        Print help
-    -V, --version     Print version
+-L, --label      Use LABEL instead of UUID
+-p, --partuuid   Use PARTUUID (GPT partition UUID)
+-t, --partlabel  Use PARTLABEL
 ```
 
-## Examples
-
-```bash
-# Generate fstab with UUIDs (default)
-recfstab /mnt >> /mnt/etc/fstab
-
-# Generate fstab with LABELs
-recfstab -L /mnt >> /mnt/etc/fstab
-
-# Generate fstab with PARTUUIDs (useful for GPT disks)
-recfstab -p /mnt >> /mnt/etc/fstab
-
-# Preview output without writing
-recfstab /mnt
-```
-
-## Sample Output
+## Output Format
 
 ```
 # /dev/vda2
-UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890    /         ext4    defaults    0    1
+UUID=a1b2c3d4-...    /         ext4    defaults    0    1
 
 # /dev/vda1
-UUID=ABCD-1234                                /boot     vfat    defaults    0    2
+UUID=ABCD-1234       /boot     vfat    defaults    0    2
 ```
 
-## What recfstab does
+## What It Does
 
-- Reads mounted filesystems under the specified root
-- Detects swap partitions from `/proc/swaps` (skips zram)
-- Looks up UUIDs/LABELs/PARTUUIDs/PARTLABELs via blkid
-- Outputs fstab-formatted entries
-- Filters out pseudo-filesystems (proc, sysfs, tmpfs, etc.)
+1. Reads `/proc/mounts` for filesystems under `<ROOT>`
+2. Reads `/proc/swaps` for swap (skips zram)
+3. Looks up identifiers via `blkid`
+4. Outputs fstab-formatted lines
 
-## What recfstab does NOT do
+## What It Does NOT Do
 
-- Write to files directly (you redirect output)
-- Modify existing fstab entries
-- Mount or unmount anything
+- Write to files (you redirect)
+- Mount/unmount anything
+- Validate the fstab syntax
 - Any other installation step
 
-This is intentional. LevitateOS is for users who want control, like Arch.
+## Exit Codes
 
-## Error Codes
-
-| Code | Exit | Description |
-|------|------|-------------|
-| E001 | 1 | Root directory does not exist |
-| E002 | 2 | Path is not a directory |
-| E003 | 3 | Failed to determine current directory |
-| E004 | 4 | findmnt command not found (util-linux not installed) |
-| E005 | 5 | findmnt command failed |
-| E006 | 6 | No filesystems found under specified root |
-| E007 | 7 | blkid command not found (util-linux not installed) |
+| Code | Error |
+|------|-------|
+| 1 | Root directory does not exist |
+| 2 | Not a directory |
+| 3 | Can't determine cwd |
+| 4 | findmnt not found |
+| 5 | findmnt failed |
+| 6 | No filesystems found |
+| 7 | blkid not found |
 
 ## Requirements
 
-- Root privileges required (for blkid UUID lookups)
-- util-linux must be installed (provides findmnt and blkid)
-- Target filesystems must be mounted
+- Root privileges
+- util-linux (provides `findmnt`, `blkid`)
+- Filesystems must be mounted
 
 ## Building
 
