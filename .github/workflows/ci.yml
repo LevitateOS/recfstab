@@ -24,9 +24,9 @@ jobs:
       msrv: '1.93'
       smoke-test-script: |
         which findmnt blkid
-        ./target/release/recfstab --help
-        ./target/release/recfstab --version
-        ./target/release/recfstab /nonexistent 2>&1 | grep -q "E001"
+        ./target/debug/recfstab --help
+        ./target/debug/recfstab --version
+        ./target/debug/recfstab /nonexistent 2>&1 | grep -q "E001"
 
   release:
     needs: [ci]
