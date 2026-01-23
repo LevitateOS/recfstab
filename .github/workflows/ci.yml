@@ -103,14 +103,59 @@ jobs:
       - name: Check MSRV
         run: cargo check --verbose
 
+  # Check if release should be skipped (docs-only changes)
+  check-release:
+    name: Check Release
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for code changes
+        id: check
+        run: |
+          # Get changed files in the last commit
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+
+          # If no changed files detected (new repo, etc.), assume release needed
+          if [ -z "$CHANGED" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if ANY changed file is NOT docs-only
+          # Docs-only files: *.md, docs/*, .github/*, LICENSE, .gitignore
+          NEEDS_RELEASE=false
+          while IFS= read -r file; do
+            case "$file" in
+              *.md|docs/*|.github/*|LICENSE|.gitignore|CLAUDE.md)
+                # Docs/config file, skip
+                ;;
+              *)
+                # Code file, needs release
+                NEEDS_RELEASE=true
+                break
+                ;;
+            esac
+          done <<< "$CHANGED"
+
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo "should_release=$NEEDS_RELEASE" >> $GITHUB_OUTPUT
+
   release:
     name: Release
-    needs: [test, clippy, fmt, msrv]
+    needs: [test, clippy, fmt, msrv, check-release]
     # Run on push to master (auto patch bump) or workflow_dispatch (manual bump type)
     # Skip if commit is a version bump (prevent infinite loop)
+    # Skip if only docs changed
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore: Bump version')) ||
-      github.event_name == 'workflow_dispatch'
+      needs.check-release.outputs.should_release == 'true' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore: Bump version')) ||
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: write
