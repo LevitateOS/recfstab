@@ -76,9 +76,22 @@ UUID=ABCD-1234                                /boot     vfat    defaults    0   
 
 This is intentional. LevitateOS is for users who want control, like Arch.
 
+## Error Codes
+
+| Code | Exit | Description |
+|------|------|-------------|
+| E001 | 1 | Root directory does not exist |
+| E002 | 2 | Path is not a directory |
+| E003 | 3 | Failed to determine current directory |
+| E004 | 4 | findmnt command not found (util-linux not installed) |
+| E005 | 5 | findmnt command failed |
+| E006 | 6 | No filesystems found under specified root |
+| E007 | 7 | blkid command not found (util-linux not installed) |
+
 ## Requirements
 
 - Root privileges required (for blkid UUID lookups)
+- util-linux must be installed (provides findmnt and blkid)
 - Target filesystems must be mounted
 
 ## Building
