@@ -1,45 +1,39 @@
-# CLAUDE.md - Recfstab
-
-## STOP. READ. THEN ACT.
-
-Before modifying this crate, read `src/main.rs` to understand the fstab generation logic.
-
----
+# CLAUDE.md - recfstab
 
 ## What is recfstab?
 
 LevitateOS fstab generator. **Like genfstab, NOT like an installer.**
 
-Reads mounted filesystems under a root directory and outputs fstab entries. That's it.
-User redirects output to a file. User does EVERYTHING else manually.
+Reads mounted filesystems under a root directory and outputs fstab entries. User redirects to file.
 
-## Development
+## What Belongs Here
+
+- Fstab entry generation
+- UUID/LABEL detection
+- Mount point discovery
+
+## What Does NOT Belong Here
+
+| Don't put here | Put it in |
+|----------------|-----------|
+| System extraction | `tools/recstrap/` |
+| Chroot setup | `tools/recchroot/` |
+| Writing files directly | User redirects output |
+
+## Commands
 
 ```bash
-cargo build --release    # LTO + strip enabled
+cargo build --release
 cargo clippy
 ```
 
-## Key Rules
-
-1. **recfstab = genfstab** - Just generate fstab, nothing else
-2. **Keep it simple** - ~100 lines, one job
-3. **No automation** - User redirects output manually
-
-## What recfstab does
+## Usage
 
 ```bash
-recfstab /mnt >> /mnt/etc/fstab    # Generate fstab with UUIDs
-recfstab -L /mnt >> /mnt/etc/fstab # Generate fstab with LABELs
+recfstab /mnt >> /mnt/etc/fstab    # Generate with UUIDs
+recfstab -L /mnt >> /mnt/etc/fstab # Generate with LABELs
 ```
 
-## What recfstab does NOT do
+## Key Rule
 
-- Write to files directly (user redirects)
-- Modify existing fstab (user manages)
-- Install anything (user does that)
-- Any other installation step
-
-## Testing
-
-Test with mounted filesystems, verify output format matches fstab(5).
+Output to stdout only. User handles file redirection.
