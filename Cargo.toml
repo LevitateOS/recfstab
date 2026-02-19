@@ -19,7 +19,3 @@ exclude = [
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
-
-[profile.release]
-strip = true
-lto = true

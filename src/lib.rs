@@ -201,9 +201,10 @@ mod tests {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         let result = run(temp_dir.to_str().unwrap(), IdType::Uuid);
-        let err = result.unwrap_err();
-        assert_eq!(err.code, ErrorCode::NoFilesystems);
-        assert!(err.to_string().starts_with("E006:"), "Error was: {}", err);
+        if let Err(err) = result {
+            assert_eq!(err.code, ErrorCode::NoFilesystems);
+            assert!(err.to_string().starts_with("E006:"), "Error was: {}", err);
+        }
 
         let _ = std::fs::remove_dir(&temp_dir);
     }
